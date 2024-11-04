@@ -4385,6 +4385,9 @@ export function getExecuteHookFunctions(
 					webhookData?.isTest,
 				);
 			},
+			getDomain(): string {
+				return additionalData.domain;
+			},
 			getWebhookName(): string {
 				if (webhookData === undefined) {
 					throw new ApplicationError('Only supported in webhook functions');

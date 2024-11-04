@@ -1081,7 +1081,7 @@ export function useCanvasOperations({ router }: { router: ReturnType<typeof useR
 
 	function resolveNodeWebhook(node: INodeUi, nodeTypeDescription: INodeTypeDescription) {
 		if (nodeTypeDescription.webhooks?.length) {
-			node.webhookId = uuid();
+			nodeHelpers.assignWebhookId(node);
 		}
 
 		// if it's a webhook and the path is empty set the UUID as the default path
@@ -1653,7 +1653,7 @@ export function useCanvasOperations({ router }: { router: ReturnType<typeof useR
 							(n) => n.webhookId === node.webhookId,
 						);
 						if (isDuplicate) {
-							node.webhookId = uuid();
+							nodeHelpers.assignWebhookId(node);
 
 							if (node.parameters.path) {
 								node.parameters.path = node.webhookId as string;

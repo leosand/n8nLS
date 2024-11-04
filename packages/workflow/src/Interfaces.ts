@@ -1106,6 +1106,7 @@ export interface IHookFunctions
 	getWebhookName(): string;
 	getWebhookDescription(name: string): IWebhookDescription | undefined;
 	getNodeWebhookUrl: (name: string) => string | undefined;
+	getDomain(): string;
 	getNodeParameter(
 		parameterName: string,
 		fallbackValue?: any,
@@ -2299,6 +2300,7 @@ export interface IWorkflowExecuteAdditionalData {
 	webhookBaseUrl: string;
 	webhookWaitingBaseUrl: string;
 	webhookTestBaseUrl: string;
+	domain: string;
 	currentNodeParameters?: INodeParameters;
 	executionTimeoutTimestamp?: number;
 	userId?: string;
