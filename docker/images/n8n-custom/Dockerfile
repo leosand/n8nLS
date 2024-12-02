@@ -1,7 +1,7 @@
 ARG NODE_VERSION=20
 
 # 1. Create an image to build n8n
-FROM --platform=linux/amd64 n8nio/base:${NODE_VERSION} AS builder
+FROM n8nio/base:${NODE_VERSION} AS builder
 
 # Build the application from source
 WORKDIR /src
@@ -41,8 +41,10 @@ RUN \
 	elif [[ "$TARGETPLATFORM" = "linux/arm64" ]]; then export ARCH_NAME="arm64"; fi; \
 	mkdir /launcher-temp && \
 	cd /launcher-temp && \
+	apk add wget && \
 	wget https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz && \
 	wget https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256 && \
+	apk del wget && \
 	# The .sha256 does not contain the filename --> Form the correct checksum file
 	echo "$(cat task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256) task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz" > checksum.sha256 && \
 	sha256sum -c checksum.sha256 && \
@@ -58,6 +60,6 @@ RUN \
 	mkdir .n8n && \
 	chown node:node .n8n
 
-ENV SHELL /bin/sh
+ENV SHELL=/bin/sh
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
