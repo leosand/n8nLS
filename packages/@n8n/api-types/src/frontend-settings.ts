@@ -163,6 +163,10 @@ export interface FrontendSettings {
 		pruneTime: number;
 		licensePruneTime: number;
 	};
+	aiCredits: {
+		enabled: boolean;
+		credits: number;
+	};
 	pruning?: {
 		isEnabled: boolean;
 		maxAge: number;
@@ -172,6 +176,5 @@ export interface FrontendSettings {
 		blockFileAccessToN8nFiles: boolean;
 	};
 	betaFeatures: FrontendBetaFeatures[];
-	virtualSchemaView: boolean;
 	easyAIWorkflowOnboarded: boolean;
 }

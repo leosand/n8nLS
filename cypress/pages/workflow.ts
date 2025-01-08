@@ -6,6 +6,15 @@ import { getVisibleSelect } from '../utils';
 import { getUniqueWorkflowName, isCanvasV2 } from '../utils/workflowUtils';
 
 const nodeCreator = new NodeCreator();
+
+/**
+ * @deprecated Use functional composables from @composables instead.
+ * If a composable doesn't exist for your use case, please create a new one in:
+ * cypress/composables
+ *
+ * This class-based approach is being phased out in favor of more modular functional composables.
+ * Each getter and action in this class should be moved to individual composable functions.
+ */
 export class WorkflowPage extends BasePage {
 	url = '/workflow/new';
 
@@ -32,7 +41,11 @@ export class WorkflowPage extends BasePage {
 		canvasNodes: () =>
 			cy.ifCanvasVersion(
 				() => cy.getByTestId('canvas-node'),
-				() => cy.getByTestId('canvas-node').not('[data-node-type="n8n-nodes-internal.addNodes"]'),
+				() =>
+					cy
+						.getByTestId('canvas-node')
+						.not('[data-node-type="n8n-nodes-internal.addNodes"]')
+						.not('[data-node-type="n8n-nodes-base.stickyNote"]'),
 			),
 		canvasNodeByName: (nodeName: string) =>
 			this.getters.canvasNodes().filter(`:contains(${nodeName})`),
@@ -97,7 +110,7 @@ export class WorkflowPage extends BasePage {
 		disabledNodes: () =>
 			cy.ifCanvasVersion(
 				() => cy.get('.node-box.disabled'),
-				() => cy.get('[data-test-id="canvas-trigger-node"][class*="disabled"]'),
+				() => cy.get('[data-test-id*="node"][class*="disabled"]'),
 			),
 		selectedNodes: () =>
 			cy.ifCanvasVersion(
@@ -333,8 +346,14 @@ export class WorkflowPage extends BasePage {
 			this.actions.contextMenuAction('select_all');
 		},
 		deselectAll: () => {
-			this.actions.openContextMenu();
-			this.actions.contextMenuAction('deselect_all');
+			cy.ifCanvasVersion(
+				() => {
+					this.actions.openContextMenu();
+					this.actions.contextMenuAction('deselect_all');
+				},
+				// rightclick doesn't work with vueFlow canvas
+				() => this.getters.nodeViewBackground().click('topLeft'),
+			);
 		},
 		openExpressionEditorModal: () => {
 			cy.contains('Expression').invoke('show').click();

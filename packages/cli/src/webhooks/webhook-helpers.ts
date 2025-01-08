@@ -7,9 +7,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 import { GlobalConfig } from '@n8n/config';
+import { Container } from '@n8n/di';
 import type express from 'express';
 import get from 'lodash/get';
-import { BinaryDataService, NodeExecuteFunctions } from 'n8n-core';
+import { BinaryDataService, ErrorReporter, Logger } from 'n8n-core';
 import type {
 	IBinaryData,
 	IBinaryKeyData,
@@ -33,23 +34,20 @@ import {
 	ApplicationError,
 	BINARY_ENCODING,
 	createDeferredPromise,
-	ErrorReporterProxy as ErrorReporter,
-	ErrorReporterProxy,
 	ExecutionCancelledError,
 	FORM_NODE_TYPE,
-	NodeHelpers,
 	NodeOperationError,
 } from 'n8n-workflow';
+import assert from 'node:assert';
 import { finished } from 'stream/promises';
-import { Container } from 'typedi';
 
 import { ActiveExecutions } from '@/active-executions';
+import config from '@/config';
 import type { Project } from '@/databases/entities/project';
 import { InternalServerError } from '@/errors/response-errors/internal-server.error';
 import { NotFoundError } from '@/errors/response-errors/not-found.error';
 import { UnprocessableRequestError } from '@/errors/response-errors/unprocessable.error';
 import type { IWorkflowDb } from '@/interfaces';
-import { Logger } from '@/logging/logger.service';
 import { parseBody } from '@/middlewares';
 import { OwnershipService } from '@/services/ownership.service';
 import { WorkflowStatisticsService } from '@/services/workflow-statistics.service';
@@ -59,6 +57,7 @@ import * as WorkflowExecuteAdditionalData from '@/workflow-execute-additional-da
 import * as WorkflowHelpers from '@/workflow-helpers';
 import { WorkflowRunner } from '@/workflow-runner';
 
+import { WebhookService } from './webhook.service';
 import type { IWebhookResponseCallbackData, WebhookRequest } from './webhook.types';
 
 /**
@@ -90,7 +89,12 @@ export function getWorkflowWebhooks(
 		}
 		returnData.push.apply(
 			returnData,
-			NodeHelpers.getNodeWebhooks(workflow, node, additionalData, ignoreRestartWebhooks),
+			Container.get(WebhookService).getNodeWebhooks(
+				workflow,
+				node,
+				additionalData,
+				ignoreRestartWebhooks,
+			),
 		);
 	}
 
@@ -256,11 +260,11 @@ export async function executeWebhook(
 		}
 
 		try {
-			webhookResultData = await workflow.runWebhook(
+			webhookResultData = await Container.get(WebhookService).runWebhook(
+				workflow,
 				webhookData,
 				workflowStartNode,
 				additionalData,
-				NodeExecuteFunctions,
 				executionMode,
 				runExecutionData ?? null,
 			);
@@ -280,7 +284,7 @@ export async function executeWebhook(
 				errorMessage = err.message;
 			}
 
-			ErrorReporterProxy.error(err, {
+			Container.get(ErrorReporter).error(err, {
 				extra: {
 					nodeName: workflowStartNode.name,
 					nodeType: workflowStartNode.type,
@@ -521,12 +525,21 @@ export async function executeWebhook(
 					didSendResponse = true;
 				})
 				.catch(async (error) => {
-					ErrorReporter.error(error);
+					Container.get(ErrorReporter).error(error);
 					Container.get(Logger).error(
 						`Error with Webhook-Response for execution "${executionId}": "${error.message}"`,
 						{ executionId, workflowId: workflow.id },
 					);
 				});
+		}
+
+		if (
+			config.getEnv('executions.mode') === 'queue' &&
+			process.env.OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS === 'true' &&
+			runData.executionMode === 'manual'
+		) {
+			assert(runData.executionData);
+			runData.executionData.isTestWebhook = true;
 		}
 
 		// Start now to run the workflow

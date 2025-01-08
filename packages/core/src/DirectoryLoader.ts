@@ -1,3 +1,4 @@
+import { Container } from '@n8n/di';
 import glob from 'fast-glob';
 import uniqBy from 'lodash/uniqBy';
 import type {
@@ -6,6 +7,7 @@ import type {
 	ICredentialType,
 	ICredentialTypeData,
 	INodeCredentialDescription,
+	INodePropertyOptions,
 	INodeType,
 	INodeTypeBaseDescription,
 	INodeTypeData,
@@ -14,13 +16,15 @@ import type {
 	IVersionedNodeType,
 	KnownNodesAndCredentials,
 } from 'n8n-workflow';
-import { ApplicationError, LoggerProxy as Logger, NodeHelpers, jsonParse } from 'n8n-workflow';
+import { ApplicationError, applyDeclarativeNodeOptionParameters, jsonParse } from 'n8n-workflow';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import * as path from 'path';
 
+import { Logger } from '@/logging/logger';
+
 import { loadClassInIsolation } from './ClassLoader';
-import { CUSTOM_NODES_CATEGORY } from './Constants';
+import { commonCORSParameters, commonPollingParameters, CUSTOM_NODES_CATEGORY } from './Constants';
 import { UnrecognizedCredentialTypeError } from './errors/unrecognized-credential-type.error';
 import { UnrecognizedNodeTypeError } from './errors/unrecognized-node-type.error';
 import type { n8n } from './Interfaces';
@@ -71,6 +75,8 @@ export abstract class DirectoryLoader {
 	types: Types = { nodes: [], credentials: [] };
 
 	readonly nodesByCredential: Record<string, string[]> = {};
+
+	protected readonly logger = Container.get(Logger);
 
 	constructor(
 		readonly directory: string,
@@ -135,7 +141,7 @@ export abstract class DirectoryLoader {
 
 			for (const version of Object.values(tempNode.nodeVersions)) {
 				this.addLoadOptionsMethods(version);
-				NodeHelpers.applySpecialNodeParameters(version);
+				this.applySpecialNodeParameters(version);
 			}
 
 			const currentVersionNode = tempNode.nodeVersions[tempNode.currentVersion];
@@ -150,7 +156,7 @@ export abstract class DirectoryLoader {
 			}
 		} else {
 			this.addLoadOptionsMethods(tempNode);
-			NodeHelpers.applySpecialNodeParameters(tempNode);
+			this.applySpecialNodeParameters(tempNode);
 
 			// Short renaming to avoid type issues
 			nodeVersion = Array.isArray(tempNode.description.version)
@@ -330,7 +336,7 @@ export abstract class DirectoryLoader {
 
 			node.description.codex = codex;
 		} catch {
-			Logger.debug(`No codex available for: ${node.description.name}`);
+			this.logger.debug(`No codex available for: ${node.description.name}`);
 
 			if (isCustom) {
 				node.description.codex = {
@@ -344,6 +350,24 @@ export abstract class DirectoryLoader {
 		if (node?.methods?.loadOptions) {
 			node.description.__loadOptionsMethods = Object.keys(node.methods.loadOptions);
 		}
+	}
+
+	private applySpecialNodeParameters(nodeType: INodeType): void {
+		const { properties, polling, supportsCORS } = nodeType.description;
+		if (polling) {
+			properties.unshift(...commonPollingParameters);
+		}
+		if (nodeType.webhook && supportsCORS) {
+			const optionsProperty = properties.find(({ name }) => name === 'options');
+			if (optionsProperty)
+				optionsProperty.options = [
+					...commonCORSParameters,
+					...(optionsProperty.options as INodePropertyOptions[]),
+				];
+			else properties.push(...commonCORSParameters);
+		}
+
+		applyDeclarativeNodeOptionParameters(nodeType);
 	}
 
 	private getIconPath(icon: string, filePath: string) {
@@ -430,7 +454,7 @@ export class PackageDirectoryLoader extends DirectoryLoader {
 
 		this.inferSupportedNodes();
 
-		Logger.debug(`Loaded all credentials and nodes from ${this.packageName}`, {
+		this.logger.debug(`Loaded all credentials and nodes from ${this.packageName}`, {
 			credentials: credentials?.length ?? 0,
 			nodes: nodes?.length ?? 0,
 		});
@@ -526,7 +550,7 @@ export class LazyPackageDirectoryLoader extends PackageDirectoryLoader {
 				);
 			}
 
-			Logger.debug(`Lazy-loading nodes and credentials from ${this.packageJson.name}`, {
+			this.logger.debug(`Lazy-loading nodes and credentials from ${this.packageJson.name}`, {
 				nodes: this.types.nodes?.length ?? 0,
 				credentials: this.types.credentials?.length ?? 0,
 			});
@@ -535,7 +559,7 @@ export class LazyPackageDirectoryLoader extends PackageDirectoryLoader {
 
 			return; // We can load nodes and credentials lazily now
 		} catch {
-			Logger.debug("Can't enable lazy-loading");
+			this.logger.debug("Can't enable lazy-loading");
 			await super.loadAll();
 		}
 	}

@@ -32,8 +32,8 @@ COPY --from=builder /compiled /usr/local/lib/node_modules/n8n
 COPY docker/images/n8n/docker-entrypoint.sh /
 
 # Setup the Task Runner Launcher
-ARG TARGETPLATFORM=linux/amd64
-ARG LAUNCHER_VERSION=1.0.0
+ARG TARGETPLATFORM
+ARG LAUNCHER_VERSION=1.1.0
 COPY docker/images/n8n/n8n-task-runners.json /etc/n8n-task-runners.json
 # Download, verify, then extract the launcher binary
 RUN \
