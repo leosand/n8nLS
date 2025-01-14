@@ -405,19 +405,6 @@ export class WorkflowExecute {
 	}
 
 	/**
-	 * Executes the hook with the given name
-	 *
-	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	async executeHook(hookName: string, parameters: any[]): Promise<void> {
-		if (this.additionalData.hooks === undefined) {
-			return;
-		}
-
-		return await this.additionalData.hooks.executeHookFunctions(hookName, parameters);
-	}
-
-	/**
 	 * Merges temporary execution metadata into the final runData structure.
 	 * During workflow execution, metadata is collected in a temporary location
 	 * (executionData.metadata). This method moves that metadata to its final
@@ -1283,14 +1270,17 @@ export class WorkflowExecute {
 				this.status = 'canceled';
 				this.abortController.abort();
 				const fullRunData = this.getFullRunData(startedAt);
-				void this.executeHook('workflowExecuteAfter', [fullRunData]);
+				void this.additionalData.hooks?.runHook('workflowExecuteAfter', [fullRunData]);
 			});
 
 			// eslint-disable-next-line complexity
 			const returnPromise = (async () => {
 				try {
 					if (!this.additionalData.restartExecutionId) {
-						await this.executeHook('workflowExecuteBefore', [workflow, this.runExecutionData]);
+						await this.additionalData.hooks?.runHook('workflowExecuteBefore', [
+							workflow,
+							this.runExecutionData,
+						]);
 					}
 				} catch (error) {
 					const e = error as unknown as ExecutionBaseError;
@@ -1374,7 +1364,7 @@ export class WorkflowExecute {
 						node: executionNode.name,
 						workflowId: workflow.id,
 					});
-					await this.executeHook('nodeExecuteBefore', [executionNode.name]);
+					await this.additionalData.hooks?.runHook('nodeExecuteBefore', [executionNode.name]);
 
 					// Get the index of the current run
 					runIndex = 0;
@@ -1665,7 +1655,7 @@ export class WorkflowExecute {
 							this.runExecutionData.executionData!.nodeExecutionStack.unshift(executionData);
 							// Only execute the nodeExecuteAfter hook if the node did not get aborted
 							if (!this.isCancelled) {
-								await this.executeHook('nodeExecuteAfter', [
+								await this.additionalData.hooks?.runHook('nodeExecuteAfter', [
 									executionNode.name,
 									taskData,
 									this.runExecutionData,
@@ -1707,7 +1697,7 @@ export class WorkflowExecute {
 					this.runExecutionData.resultData.runData[executionNode.name].push(taskData);
 
 					if (this.runExecutionData.waitTill) {
-						await this.executeHook('nodeExecuteAfter', [
+						await this.additionalData.hooks?.runHook('nodeExecuteAfter', [
 							executionNode.name,
 							taskData,
 							this.runExecutionData,
@@ -1726,7 +1716,7 @@ export class WorkflowExecute {
 					) {
 						// Before stopping, make sure we are executing hooks so
 						// That frontend is notified for example for manual executions.
-						await this.executeHook('nodeExecuteAfter', [
+						await this.additionalData.hooks?.runHook('nodeExecuteAfter', [
 							executionNode.name,
 							taskData,
 							this.runExecutionData,
@@ -1836,7 +1826,7 @@ export class WorkflowExecute {
 					// Execute hooks now to make sure that all hooks are executed properly
 					// Await is needed to make sure that we don't fall into concurrency problems
 					// When saving node execution data
-					await this.executeHook('nodeExecuteAfter', [
+					await this.additionalData.hooks?.runHook('nodeExecuteAfter', [
 						executionNode.name,
 						taskData,
 						this.runExecutionData,
@@ -2039,12 +2029,14 @@ export class WorkflowExecute {
 
 					this.moveNodeMetadata();
 
-					await this.executeHook('workflowExecuteAfter', [fullRunData, newStaticData]).catch(
-						// eslint-disable-next-line @typescript-eslint/no-shadow
-						(error) => {
-							console.error('There was a problem running hook "workflowExecuteAfter"', error);
-						},
-					);
+					await this.additionalData.hooks
+						?.runHook('workflowExecuteAfter', [fullRunData, newStaticData])
+						.catch(
+							// eslint-disable-next-line @typescript-eslint/no-shadow
+							(error) => {
+								console.error('There was a problem running hook "workflowExecuteAfter"', error);
+							},
+						);
 
 					if (closeFunction) {
 						try {
@@ -2132,7 +2124,10 @@ export class WorkflowExecute {
 		this.moveNodeMetadata();
 		// Prevent from running the hook if the error is an abort error as it was already handled
 		if (!this.isCancelled) {
-			await this.executeHook('workflowExecuteAfter', [fullRunData, newStaticData]);
+			await this.additionalData.hooks?.runHook('workflowExecuteAfter', [
+				fullRunData,
+				newStaticData,
+			]);
 		}
 
 		if (closeFunction) {

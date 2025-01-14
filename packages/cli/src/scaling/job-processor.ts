@@ -13,6 +13,7 @@ import type PCancelable from 'p-cancelable';
 import config from '@/config';
 import { ExecutionRepository } from '@/databases/repositories/execution.repository';
 import { WorkflowRepository } from '@/databases/repositories/workflow.repository';
+import { ExecutionLifecycleHooksFactory } from '@/execution-lifecycle-hooks/execution-lifecycle-hooks-factory';
 import { ManualExecutionService } from '@/manual-execution.service';
 import { NodeTypes } from '@/node-types';
 import * as WorkflowExecuteAdditionalData from '@/workflow-execute-additional-data';
@@ -40,6 +41,7 @@ export class JobProcessor {
 		private readonly workflowRepository: WorkflowRepository,
 		private readonly nodeTypes: NodeTypes,
 		private readonly instanceSettings: InstanceSettings,
+		private readonly executionLifecycleHooksFactory: ExecutionLifecycleHooksFactory,
 		private readonly manualExecutionService: ManualExecutionService,
 	) {
 		this.logger = this.logger.scoped('scaling');
@@ -124,7 +126,7 @@ export class JobProcessor {
 
 		const { pushRef } = job.data;
 
-		additionalData.hooks = WorkflowExecuteAdditionalData.getWorkflowHooksWorkerExecuter(
+		additionalData.hooks = this.executionLifecycleHooksFactory.forSubExecution(
 			execution.mode,
 			job.data.executionId,
 			execution.workflowData,
@@ -136,18 +138,15 @@ export class JobProcessor {
 			additionalData.sendDataToUI = WorkflowExecuteAdditionalData.sendDataToUI.bind({ pushRef });
 		}
 
-		additionalData.hooks.hookFunctions.sendResponse = [
-			async (response: IExecuteResponsePromiseData): Promise<void> => {
-				const msg: RespondToWebhookMessage = {
-					kind: 'respond-to-webhook',
-					executionId,
-					response: this.encodeWebhookResponse(response),
-					workerId: this.instanceSettings.hostId,
-				};
-
-				await job.progress(msg);
-			},
-		];
+		additionalData.hooks.addCallback('sendResponse', async (response) => {
+			const msg: RespondToWebhookMessage = {
+				kind: 'respond-to-webhook',
+				executionId,
+				response: this.encodeWebhookResponse(response),
+				workerId: this.instanceSettings.hostId,
+			};
+			await job.progress(msg);
+		});
 
 		additionalData.executionId = executionId;
 
