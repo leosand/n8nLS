@@ -208,4 +208,14 @@ export class ExecuteContext extends BaseExecuteContext implements IExecuteFuncti
 	getParentCallbackManager(): CallbackManager | undefined {
 		return this.additionalData.parentCallbackManager;
 	}
+
+	sendChatMessage(message: string) {
+		const connection = this.additionalData.getChatConnection?.(this.additionalData.executionId);
+		if (connection) {
+			connection.send(message);
+			return;
+		}
+
+		throw new ApplicationError('Connection to chat is not available, cannot send message');
+	}
 }

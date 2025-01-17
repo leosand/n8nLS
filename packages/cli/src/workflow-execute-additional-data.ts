@@ -53,6 +53,7 @@ import { WorkflowStatisticsService } from '@/services/workflow-statistics.servic
 import { findSubworkflowStart, isWorkflowIdValid } from '@/utils';
 import * as WorkflowHelpers from '@/workflow-helpers';
 
+import { ChatService } from './chat/chat-service';
 import { WorkflowRepository } from './databases/repositories/workflow.repository';
 import { EventService } from './events/event.service';
 import { restoreBinaryDataId } from './execution-lifecycle-hooks/restore-binary-data-id';
@@ -1020,6 +1021,9 @@ export async function getBase(
 		setExecutionStatus,
 		variables,
 		secretsHelpers: Container.get(SecretsHelper),
+		getChatConnection: (executionId: string) => {
+			return Container.get(ChatService).getConnection(executionId) as WebSocket | undefined;
+		},
 		async startRunnerTask(
 			additionalData: IWorkflowExecuteAdditionalData,
 			jobType: string,
