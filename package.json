@@ -87,6 +87,8 @@
       "tsconfig-paths": "^4.2.0",
       "typescript": "^5.7.2",
       "vue-tsc": "^2.1.10",
+      "@testing-library/user-event": "14.6.0",
+      "@testing-library/jest-dom": "6.6.3",
       "ws": ">=8.17.1"
     },
     "patchedDependencies": {
