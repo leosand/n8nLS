@@ -20,7 +20,7 @@ import { stringifyExpressionResult } from '@/utils/expressions';
 import { isValueExpression, parseResourceMapperFieldName } from '@/utils/nodeTypesUtils';
 import type { EventBus } from 'n8n-design-system/utils';
 import { createEventBus } from 'n8n-design-system/utils';
-import { computed } from 'vue';
+import { computed, useTemplateRef } from 'vue';
 import { useRouter } from 'vue-router';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 
@@ -45,6 +45,7 @@ type Props = {
 	eventSource?: string;
 	label?: IParameterLabel;
 	eventBus?: EventBus;
+	canBeOverridden?: boolean;
 };
 
 const props = withDefaults(defineProps<Props>(), {
@@ -196,6 +197,12 @@ function onValueChanged(parameterData: IUpdateInformation) {
 function onTextInput(parameterData: IUpdateInformation) {
 	emit('textInput', parameterData);
 }
+
+const param = useTemplateRef('param');
+const isSingleLineInput = computed(() => param.value?.isSingleLineInput);
+defineExpose({
+	isSingleLineInput,
+});
 </script>
 
 <template>
@@ -222,12 +229,17 @@ function onTextInput(parameterData: IUpdateInformation) {
 			:rows="rows"
 			:data-test-id="`parameter-input-${parsedParameterName}`"
 			:event-bus="eventBus"
+			:can-be-overridden="canBeOverridden"
 			@focus="onFocus"
 			@blur="onBlur"
 			@drop="onDrop"
 			@text-input="onTextInput"
 			@update="onValueChanged"
-		/>
+		>
+			<template #overrideButton>
+				<slot v-if="$slots.overrideButton" name="overrideButton" />
+			</template>
+		</ParameterInput>
 		<div v-if="!hideHint && (expressionOutput || parameterHint)" :class="$style.hint">
 			<div>
 				<InputHint

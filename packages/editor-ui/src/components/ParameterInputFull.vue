@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, type ComputedRef, ref, useTemplateRef, watch } from 'vue';
 import type { IUpdateInformation } from '@/Interface';
 
 import DraggableTarget from '@/components/DraggableTarget.vue';
@@ -12,8 +12,15 @@ import { getMappedResult } from '@/utils/mappingUtils';
 import { hasExpressionMapping, hasOnlyListMode, isValueExpression } from '@/utils/nodeTypesUtils';
 import { isResourceLocatorValue } from '@/utils/typeGuards';
 import { createEventBus } from 'n8n-design-system/utils';
-import type { INodeProperties, IParameterLabel, NodeParameterValueType } from 'n8n-workflow';
-import { N8nInputLabel } from 'n8n-design-system';
+import {
+	type INodeProperties,
+	type IParameterLabel,
+	type NodeParameterValueType,
+} from 'n8n-workflow';
+import { N8nButton, N8nInputLabel, N8nSelectableList, N8nTooltip } from 'n8n-design-system';
+import AiStarsIcon from './AiStarsIcon.vue';
+import { type ParameterOverride, makeOverrideValue } from '../utils/parameterOverrides';
+import { useNodeTypesStore } from '@/stores/nodeTypes.store';
 
 type Props = {
 	parameter: INodeProperties;
@@ -54,8 +61,25 @@ const menuExpanded = ref(false);
 const forceShowExpression = ref(false);
 
 const ndvStore = useNDVStore();
+const nodeTypesStore = useNodeTypesStore();
 
 const node = computed(() => ndvStore.activeNode);
+const parameterOverrides = ref<ParameterOverride | null>(
+	makeOverrideValue(
+		props,
+		node.value && nodeTypesStore.getNodeType(node.value.type, node.value.typeVersion),
+	),
+);
+
+const isContentOverride = computed(
+	() => !!parameterOverrides.value?.isOverrideValue(props.value?.toString() ?? ''),
+);
+const canBeContentOverride = computed(() => {
+	if (!node.value || isResourceLocator.value) return false;
+
+	return parameterOverrides.value !== null;
+});
+
 const hint = computed(() => i18n.nodeText().hint(props.parameter, props.path));
 
 const isResourceLocator = computed(
@@ -64,13 +88,18 @@ const isResourceLocator = computed(
 const isDropDisabled = computed(
 	() =>
 		props.parameter.noDataExpression ||
-		props.isReadOnly ||
+		isReadOnlyParameter.value ||
 		isResourceLocator.value ||
 		isExpression.value,
 );
 const isExpression = computed(() => isValueExpression(props.parameter, props.value));
 const showExpressionSelector = computed(() =>
-	isResourceLocator.value ? !hasOnlyListMode(props.parameter) : true,
+	!isContentOverride.value && isResourceLocator.value ? !hasOnlyListMode(props.parameter) : true,
+);
+
+const isReadOnlyParameter = computed(
+	() =>
+		props.isReadOnly || props.parameter.disabledOptions !== undefined || !!isContentOverride.value,
 );
 
 function onFocus() {
@@ -189,6 +218,10 @@ function onDrop(newParamValue: string) {
 	}, 200);
 }
 
+const showOverrideButton = computed(
+	() => canBeContentOverride.value && !isContentOverride.value && !isReadOnlyParameter.value,
+);
+
 // When switching to read-only mode, reset the value to the default value
 watch(
 	() => props.isReadOnly,
@@ -199,10 +232,23 @@ watch(
 		}
 	},
 );
+
+const parameterInputWrapper = useTemplateRef('parameterInputWrapper');
+const isSingleLineInput: ComputedRef<boolean> = computed(
+	() => parameterInputWrapper.value?.isSingleLineInput ?? false,
+);
+
+function updateOverriddenValue() {
+	valueChanged({
+		name: props.path,
+		value: parameterOverrides.value?.buildValueFromOverride(props, false),
+	});
+}
 </script>
 
 <template>
 	<N8nInputLabel
+		ref="inputLabel"
 		:class="[$style.wrapper]"
 		:label="hideLabel ? '' : i18n.nodeText().inputLabelDisplayName(parameter, path)"
 		:tooltip-text="hideLabel ? '' : i18n.nodeText().inputLabelDescription(parameter, path)"
@@ -213,11 +259,30 @@ watch(
 		:size="label.size"
 		color="text-dark"
 	>
+		<template
+			v-if="showOverrideButton && !isSingleLineInput && optionsPosition === 'top'"
+			#persistentOptions
+		>
+			<N8nTooltip>
+				<template #content>
+					<div>{{ i18n.baseText('parameterOverride.applyOverrideButtonTooltip') }}</div>
+				</template>
+
+				<N8nButton
+					:class="[$style.overrideButton, $style.noCornersBottom, $style.overrideButtonInOptions]"
+					type="tertiary"
+					@click="updateOverriddenValue"
+				>
+					<AiStarsIcon size="large" :class="$style.aiStarsIcon" />
+				</N8nButton>
+			</N8nTooltip>
+		</template>
+
 		<template v-if="displayOptions && optionsPosition === 'top'" #options>
 			<ParameterOptions
 				:parameter="parameter"
 				:value="value"
-				:is-read-only="isReadOnly"
+				:is-read-only="isReadOnlyParameter"
 				:show-options="displayOptions"
 				:show-expression-selector="showExpressionSelector"
 				@update:model-value="optionSelected"
@@ -232,28 +297,82 @@ watch(
 			@drop="onDrop"
 		>
 			<template #default="{ droppable, activeDrop }">
-				<ParameterInputWrapper
-					:parameter="parameter"
-					:model-value="value"
-					:path="path"
-					:is-read-only="isReadOnly"
-					:is-assignment="isAssignment"
-					:rows="rows"
-					:droppable="droppable"
-					:active-drop="activeDrop"
-					:force-show-expression="forceShowExpression"
-					:hint="hint"
-					:hide-hint="hideHint"
-					:hide-issues="hideIssues"
-					:label="label"
-					:event-bus="eventBus"
-					input-size="small"
-					@update="valueChanged"
-					@text-input="onTextInput"
-					@focus="onFocus"
-					@blur="onBlur"
-					@drop="onDrop"
-				/>
+				<div
+					v-if="canBeContentOverride && isContentOverride"
+					:class="$style.contentOverrideContainer"
+				>
+					<div :class="[$style.iconStars, 'el-input-group__prepend', $style.noCornersRight]">
+						<AiStarsIcon :class="$style.aiStarsIcon" />
+					</div>
+					<N8nInput
+						:model-value="parameterOverrides?.overridePlaceholder"
+						:class="$style.overrideInput"
+						disabled
+						type="text"
+						size="small"
+					/>
+					<N8nIconButton
+						v-if="!isReadOnly"
+						type="tertiary"
+						:class="['n8n-input', $style.overrideCloseButton]"
+						outline="false"
+						icon="xmark"
+						size="xsmall"
+						@click="
+							() => {
+								valueChanged({
+									node: node?.name,
+									name: props.path,
+									value: parameterOverrides?.buildValueFromOverride(props, true),
+								});
+							}
+						"
+					/>
+				</div>
+				<div v-else>
+					<ParameterInputWrapper
+						ref="parameterInputWrapper"
+						:parameter="parameter"
+						:model-value="value"
+						:path="path"
+						:is-read-only="isReadOnlyParameter"
+						:is-assignment="isAssignment"
+						:rows="rows"
+						:droppable="droppable"
+						:active-drop="activeDrop"
+						:force-show-expression="forceShowExpression"
+						:hint="hint"
+						:hide-hint="hideHint"
+						:hide-issues="hideIssues"
+						:label="label"
+						:event-bus="eventBus"
+						:can-be-overridden="canBeContentOverride"
+						input-size="small"
+						@update="valueChanged"
+						@text-input="onTextInput"
+						@focus="onFocus"
+						@blur="onBlur"
+						@drop="onDrop"
+					>
+						<template v-if="showOverrideButton && isSingleLineInput" #overrideButton>
+							<N8nTooltip>
+								<template #content>
+									<div>
+										{{ i18n.baseText('parameterOverride.applyOverrideButtonTooltip') }}
+									</div>
+								</template>
+
+								<N8nButton
+									:class="[$style.overrideButton]"
+									type="tertiary"
+									@click="updateOverriddenValue"
+								>
+									<AiStarsIcon size="large" :class="$style.aiStarsIcon" />
+								</N8nButton>
+							</N8nTooltip>
+						</template>
+					</ParameterInputWrapper>
+				</div>
 			</template>
 		</DraggableTarget>
 		<div
@@ -266,13 +385,48 @@ watch(
 				v-if="optionsPosition === 'bottom'"
 				:parameter="parameter"
 				:value="value"
-				:is-read-only="isReadOnly"
+				:is-read-only="isReadOnlyParameter"
 				:show-options="displayOptions"
 				:show-expression-selector="showExpressionSelector"
 				@update:model-value="optionSelected"
 				@menu-expanded="onMenuExpanded"
 			/>
 		</div>
+		<N8nSelectableList
+			v-if="isContentOverride && parameterOverrides"
+			v-model="parameterOverrides.extraPropValues"
+			:class="$style.overrideSelectableList"
+			:inputs="
+				Object.entries(parameterOverrides.extraProps).map(([name, prop]) => ({
+					name,
+					...prop,
+				}))
+			"
+			:disabled="isReadOnly"
+		>
+			<template #displayItem="{ name, tooltip, initialValue, type }">
+				<ParameterInputFull
+					:parameter="{
+						name,
+						displayName: name[0].toUpperCase() + name.slice(1),
+						type,
+						default: initialValue,
+						noDataExpression: true,
+						description: tooltip,
+					}"
+					:is-read-only="isReadOnly"
+					:value="parameterOverrides?.extraPropValues[name]"
+					:path="`${path}.${name}`"
+					input-size="small"
+					@update="
+						(x) => {
+							if (parameterOverrides) parameterOverrides.extraPropValues[name] = x.value;
+							updateOverriddenValue();
+						}
+					"
+				/>
+			</template>
+		</N8nSelectableList>
 	</N8nInputLabel>
 </template>
 
@@ -285,6 +439,73 @@ watch(
 			opacity: 1;
 		}
 	}
+}
+
+.contentOverrideContainer {
+	display: flex;
+	gap: var(--spacing-4xs);
+	border-radius: var(--border-radius-base);
+	background-color: var(--color-foreground-base);
+}
+
+.overrideCloseButton {
+	padding: 0px 8px 3px; // the icon used is off-center vertically
+	border: 0px;
+	color: var(--color-text-base);
+}
+
+.overrideButton {
+	display: flex;
+	justify-content: center;
+	border: 0px;
+	height: 30px;
+	width: 30px;
+	background-color: var(--color-foreground-base);
+	color: var(--color-foreground-xdark);
+
+	&:hover {
+		color: var(--color-foreground-xdark);
+		background-color: var(--color-secondary);
+	}
+}
+
+.overrideButtonInOptions {
+	position: relative;
+	// To connect to input panel below the button
+	top: 1px;
+}
+
+.noCornersRight {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.noCornersBottom {
+	border-bottom-right-radius: 0;
+	border-bottom-left-radius: 0;
+}
+
+.iconStars {
+	align-self: center;
+	padding-left: 8px;
+	width: 22px;
+	text-align: center;
+	border: none;
+	color: var(--color-foreground-xdark);
+	background-color: var(--color-foreground-base);
+}
+
+.overrideInput {
+	* > input {
+		padding-left: 0;
+		// We need this in light mode
+		background-color: var(--color-foreground-base) !important;
+		border: none;
+	}
+}
+
+.overrideSelectableList {
+	margin-top: var(--spacing-2xs);
 }
 
 .options {

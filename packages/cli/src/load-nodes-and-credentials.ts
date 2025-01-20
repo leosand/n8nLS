@@ -461,14 +461,6 @@ export class LoadNodesAndCredentials {
 					placeholder: `e.g. ${item.description.description}`,
 				};
 
-				const noticeProp: INodeProperties = {
-					displayName:
-						"Use the expression {{ $fromAI('placeholder_name') }} for any data to be filled by the model",
-					name: 'notice',
-					type: 'notice',
-					default: '',
-				};
-
 				item.description.properties.unshift(descProp);
 
 				// If node has resource or operation we can determine pre-populate tool description based on it
@@ -482,8 +474,6 @@ export class LoadNodesAndCredentials {
 						},
 					};
 				}
-
-				item.description.properties.unshift(noticeProp);
 			}
 		}
 
