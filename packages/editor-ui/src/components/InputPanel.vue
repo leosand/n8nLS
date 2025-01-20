@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from '@/composables/useI18n';
+import { useTelemetry } from '@/composables/useTelemetry';
 import {
 	CRON_NODE_TYPE,
 	INTERVAL_NODE_TYPE,
@@ -12,16 +13,15 @@ import { useUIStore } from '@/stores/ui.store';
 import { useWorkflowsStore } from '@/stores/workflows.store';
 import { waitingNodeTooltip } from '@/utils/executionUtils';
 import { uniqBy } from 'lodash-es';
+import { N8nRadioButtons, N8nText, N8nTooltip } from 'n8n-design-system';
 import type { INodeInputConfiguration, INodeOutputConfiguration, Workflow } from 'n8n-workflow';
 import { NodeConnectionType, NodeHelpers } from 'n8n-workflow';
+import { storeToRefs } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import InputNodeSelect from './InputNodeSelect.vue';
 import NodeExecuteButton from './NodeExecuteButton.vue';
 import RunData from './RunData.vue';
 import WireMeUp from './WireMeUp.vue';
-import { useTelemetry } from '@/composables/useTelemetry';
-import { N8nRadioButtons, N8nTooltip, N8nText } from 'n8n-design-system';
-import { storeToRefs } from 'pinia';
 
 type MappingMode = 'debugging' | 'mapping';
 
@@ -71,7 +71,7 @@ const telemetry = useTelemetry();
 
 const showDraggableHintWithDelay = ref(false);
 const draggableHintShown = ref(false);
-const inputMode = ref<MappingMode>('debugging');
+
 const mappedNode = ref<string | null>(null);
 const inputModes = [
 	{ value: 'mapping', label: i18n.baseText('ndv.input.mapping') },
@@ -88,6 +88,27 @@ const {
 	focusedMappableInput,
 	isMappingOnboarded: isUserOnboarded,
 } = storeToRefs(ndvStore);
+
+const rootNode = computed(() => {
+	if (!activeNode.value) return null;
+
+	return props.workflow.getChildNodes(activeNode.value.name, 'ALL').at(0) ?? null;
+});
+
+/**
+ * True if active node itself is the root node or its root node has run
+ */
+const isRootNodeOrHasRootNodeRun = computed((): boolean => {
+	return rootNode.value
+		? !!workflowsStore.getWorkflowExecution?.data?.resultData.runData[rootNode.value]
+		: true;
+});
+
+const inputMode = ref<MappingMode>(
+	// If input data from the root node doesn't exist, show mapping mode by default
+	isRootNodeOrHasRootNodeRun.value ? 'debugging' : 'mapping',
+);
+
 const isMappingMode = computed(() => isActiveNodeConfig.value && inputMode.value === 'mapping');
 const showDraggableHint = computed(() => {
 	const toIgnore = [START_NODE_TYPE, MANUAL_TRIGGER_NODE_TYPE, CRON_NODE_TYPE, INTERVAL_NODE_TYPE];
@@ -158,12 +179,6 @@ const isExecutingPrevious = computed(() => {
 	return false;
 });
 const workflowRunning = computed(() => uiStore.isActionActive.workflowRunning);
-
-const rootNode = computed(() => {
-	if (!activeNode.value) return null;
-
-	return props.workflow.getChildNodes(activeNode.value.name, 'ALL').at(0) ?? null;
-});
 
 const rootNodesParents = computed(() => {
 	if (!rootNode.value) return [];
@@ -404,9 +419,19 @@ function activatePane() {
 				v-if="(isActiveNodeConfig && rootNode) || parentNodes.length"
 				:class="$style.noOutputData"
 			>
-				<N8nText tag="div" :bold="true" color="text-dark" size="large">{{
-					i18n.baseText('ndv.input.noOutputData.title')
-				}}</N8nText>
+				<template v-if="isMappingMode || isRootNodeOrHasRootNodeRun">
+					<N8nText tag="div" :bold="true" color="text-dark" size="large">{{
+						i18n.baseText('ndv.input.noOutputData.title')
+					}}</N8nText>
+				</template>
+				<template v-else>
+					<N8nText tag="div" :bold="true" color="text-dark" size="large">{{
+						i18n.baseText('ndv.input.rootNodeHasNotRun.title')
+					}}</N8nText>
+					<N8nText tag="div" color="text-dark" size="medium">{{
+						i18n.baseText('ndv.input.rootNodeHasNotRun.description')
+					}}</N8nText>
+				</template>
 				<N8nTooltip v-if="!readOnly" :visible="showDraggableHint && showDraggableHintWithDelay">
 					<template #content>
 						<div
@@ -423,6 +448,7 @@ function activatePane() {
 						:transparent="true"
 						:node-name="(isActiveNodeConfig ? rootNode : currentNodeName) ?? ''"
 						:label="i18n.baseText('ndv.input.noOutputData.executePrevious')"
+						:class="$style.executePreviousButton"
 						telemetry-source="inputs"
 						data-test-id="execute-previous-node"
 						@execute="onNodeExecute"
@@ -494,15 +520,15 @@ function activatePane() {
 	margin-left: auto;
 }
 .noOutputData {
-	max-width: 180px;
-
-	> *:first-child {
-		margin-bottom: var(--spacing-m);
-	}
+	max-width: 250px;
 
 	> * {
 		margin-bottom: var(--spacing-2xs);
 	}
+}
+
+.executePreviousButton {
+	margin-top: var(--spacing-m);
 }
 
 .recoveredOutputData {
